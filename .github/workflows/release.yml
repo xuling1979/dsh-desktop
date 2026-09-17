@@ -612,7 +612,7 @@ jobs:
         env:
           SMOKE_BASE: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.prerelease_tag != '') && 'dist' || 'dist-dev' }}
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           # electron-builder 26 keeps the arch suffix for non-x64 outputs, so
           # the unpacked directory may be either "linux-unpacked" or
           # "linux-arm64-unpacked".
