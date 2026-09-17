@@ -515,20 +515,18 @@ jobs:
         env:
           SMOKE_BASE: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.prerelease_tag != '') && 'dist' || 'dist-dev' }}
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           # Validate the packaged per-arch runtime binaries without a display:
           # the bundled Node must run on the target arch and the koffi native
           # binding must resolve from inside the packaged app.
-          # electron-builder 26 drops the arch suffix from the x64 unpacked
-          # dir but keeps it for arm64 ("dist[-dev]/linux-unpacked" vs
-          # "dist[-dev]/linux-arm64-unpacked"), so discover either layout.
+          # electron-builder 26 drops the arch suffix for x64 outputs.
           SMOKE_DIR=""
           shopt -s nullglob
-          for d in "$SMOKE_BASE"/linux-unpacked "$SMOKE_BASE"/linux-*-unpacked; do
+          for d in "$SMOKE_BASE"/linux-unpacked; do
             SMOKE_DIR="$d"; break
           done
           shopt -u nullglob
-          test -n "$SMOKE_DIR" || { echo "No unpacked Linux app under $SMOKE_BASE/"; exit 1; }
+          test -n "$SMOKE_DIR" || { ls -la "$SMOKE_BASE"; echo "No linux-unpacked app under $SMOKE_BASE/"; exit 1; }
           # Resolve to an absolute path so the createRequire anchor and the
           # prefix comparison below survive `node -e` running with cwd !=
           # packaged app.
@@ -613,16 +611,17 @@ jobs:
           SMOKE_BASE: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.prerelease_tag != '') && 'dist' || 'dist-dev' }}
         run: |
           set -euxo pipefail
-          # electron-builder 26 keeps the arch suffix for non-x64 outputs, so
-          # the unpacked directory may be either "linux-unpacked" or
-          # "linux-arm64-unpacked".
+          # electron-builder 26 may also emit an unsuffixed
+          # "dist[-dev]/linux-unpacked" on arm64 runners that lacks the
+          # packaged payload, so the arm64 job must only accept the
+          # arch-suffixed directory.
           SMOKE_DIR=""
           shopt -s nullglob
-          for d in "$SMOKE_BASE"/linux-unpacked "$SMOKE_BASE"/linux-*-unpacked; do
+          for d in "$SMOKE_BASE"/linux-arm64-unpacked; do
             SMOKE_DIR="$d"; break
           done
           shopt -u nullglob
-          test -n "$SMOKE_DIR" || { echo "No unpacked Linux app under $SMOKE_BASE/"; exit 1; }
+          test -n "$SMOKE_DIR" || { ls -la "$SMOKE_BASE"; echo "No linux-arm64-unpacked app under $SMOKE_BASE/"; exit 1; }
           # Resolve to an absolute path so the createRequire anchor and the
           # prefix comparison below survive `node -e` running with cwd !=
           # packaged app.
