@@ -6,7 +6,7 @@ import { stringify } from 'yaml'
 import { describe, expect, it } from 'vitest'
 import { verifyReleaseAssets } from '../scripts/verify-release-assets.mjs'
 
-const minimumBytes = { dmg: 1, zip: 1, exe: 1, blockmap: 1, yml: 1 }
+const minimumBytes = { dmg: 1, zip: 1, exe: 1, deb: 1, rpm: 1, targz: 1, blockmap: 1, yml: 1 }
 
 async function digest(content) {
   return createHash('sha512').update(content).digest('base64')
@@ -21,14 +21,21 @@ async function createFixture(root) {
   const armZip = await writeFixture(root, 'dsh-desktop-mac-arm64.zip', Buffer.from('PK-arm'))
   const x64Zip = await writeFixture(root, 'dsh-desktop-mac-x64.zip', Buffer.from('PK-x64'))
   const windows = await writeFixture(root, 'dsh-desktop-windows-x64-setup.exe', Buffer.from('MZ-win'))
+  const linuxX64 = await writeFixture(root, 'dsh-desktop-linux-x64.tar.gz', Buffer.from([0x1f, 0x8b, 0x2d, 0x78]))
+  const linuxArm64 = await writeFixture(root, 'dsh-desktop-linux-arm64.tar.gz', Buffer.from([0x1f, 0x8b, 0x2d, 0x61]))
   await Promise.all([
     writeFile(path.join(root, 'dsh-desktop-mac-arm64.dmg'), Buffer.concat([Buffer.alloc(512), Buffer.from('koly')])),
     writeFile(path.join(root, 'dsh-desktop-mac-x64.dmg'), Buffer.concat([Buffer.alloc(512), Buffer.from('koly')])),
     writeFile(path.join(root, 'dsh-desktop-mac-arm64.zip.blockmap'), 'blockmap'),
     writeFile(path.join(root, 'dsh-desktop-mac-x64.zip.blockmap'), 'blockmap'),
     writeFile(path.join(root, 'dsh-desktop-windows-x64-setup.exe.blockmap'), 'blockmap'),
+    writeFile(path.join(root, 'dsh-desktop-linux-x64.deb'), Buffer.from('!<arch>\ndeb-arm64')),
+    writeFile(path.join(root, 'dsh-desktop-linux-arm64.deb'), Buffer.from('!<arch>\ndeb-x64')),
+    writeFile(path.join(root, 'dsh-desktop-linux-x64.rpm'), Buffer.from([0xed, 0xab, 0xee, 0xdb, 0x72, 0x70, 0x6d, 0x78])),
+    writeFile(path.join(root, 'dsh-desktop-linux-arm64.rpm'), Buffer.from([0xed, 0xab, 0xee, 0xdb, 0x72, 0x70, 0x6d, 0x61])),
     writeFile(path.join(root, 'latest-mac.yml'), stringify({ version: '1.2.3', files: [armZip, x64Zip] })),
-    writeFile(path.join(root, 'latest.yml'), stringify({ version: '1.2.3', files: [windows] }))
+    writeFile(path.join(root, 'latest.yml'), stringify({ version: '1.2.3', files: [windows] })),
+    writeFile(path.join(root, 'latest-linux.yml'), stringify({ version: '1.2.3', files: [linuxX64, linuxArm64] }))
   ])
 }
 
@@ -74,6 +81,19 @@ describe('release asset verification', () => {
       await expect(
         verifyReleaseAssets(root, '1.2.3', { minimumBytes })
       ).rejects.toThrow('is not a PE executable')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects a Linux package whose archive header is invalid', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'dsh-release-assets-'))
+    try {
+      await createFixture(root)
+      await writeFile(path.join(root, 'dsh-desktop-linux-x64.deb'), 'not-a-deb')
+      await expect(
+        verifyReleaseAssets(root, '1.2.3', { minimumBytes })
+      ).rejects.toThrow('is not a Debian package')
     } finally {
       await rm(root, { recursive: true, force: true })
     }

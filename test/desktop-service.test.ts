@@ -23,9 +23,11 @@ describe('desktop service', () => {
     expect(desktopPlatform('darwin', 'arm64')).toBe('mac')
     expect(desktopPlatform('darwin', 'x64')).toBe('mac-intel')
     expect(desktopPlatform('win32', 'x64')).toBe('windows')
+    expect(desktopPlatform('linux', 'x64')).toBe('linux-x64')
+    expect(desktopPlatform('linux', 'arm64')).toBe('linux-arm64')
     expect(isPrereleaseVersion('0.9.0+build-info')).toBe(false)
     expect(isPrereleaseVersion('0.9.0-rc.1+build')).toBe(true)
-    expect(() => desktopPlatform('linux', 'x64')).toThrow('Unsupported')
+    expect(() => desktopPlatform('linux', 'loong64')).toThrow('Unsupported')
   })
   it('uploads exactly the last 100 lines, with redaction before disk, and consumes the report after one upload attempt', async () => {
     const { options, request, service, dir } = fixture()

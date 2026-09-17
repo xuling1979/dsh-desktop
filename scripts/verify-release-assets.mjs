@@ -14,8 +14,15 @@ const REQUIRED_ASSETS = [
   'dsh-desktop-mac-x64.zip.blockmap',
   'dsh-desktop-windows-x64-setup.exe',
   'dsh-desktop-windows-x64-setup.exe.blockmap',
+  'dsh-desktop-linux-x64.deb',
+  'dsh-desktop-linux-x64.rpm',
+  'dsh-desktop-linux-x64.tar.gz',
+  'dsh-desktop-linux-arm64.deb',
+  'dsh-desktop-linux-arm64.rpm',
+  'dsh-desktop-linux-arm64.tar.gz',
   'latest-mac.yml',
-  'latest.yml'
+  'latest.yml',
+  'latest-linux.yml'
 ]
 
 // A complete DSH Desktop runtime is substantially larger than these floors.
@@ -24,6 +31,9 @@ const DEFAULT_MINIMUM_BYTES = {
   dmg: 100 * 1024 * 1024,
   zip: 100 * 1024 * 1024,
   exe: 100 * 1024 * 1024,
+  deb: 100 * 1024 * 1024,
+  rpm: 100 * 1024 * 1024,
+  targz: 100 * 1024 * 1024,
   blockmap: 1024,
   yml: 64
 }
@@ -42,13 +52,55 @@ async function sha512(file) {
 function assetKind(name) {
   if (name.endsWith('.zip.blockmap') || name.endsWith('.exe.blockmap')) return 'blockmap'
   if (name.endsWith('.dmg')) return 'dmg'
+  if (name.endsWith('.tar.gz')) return 'targz'
   if (name.endsWith('.zip')) return 'zip'
   if (name.endsWith('.exe')) return 'exe'
+  if (name.endsWith('.deb')) return 'deb'
+  if (name.endsWith('.rpm')) return 'rpm'
   if (name.endsWith('.yml')) return 'yml'
   throw new Error(`Unsupported release asset: ${name}`)
 }
 
 async function assertFileHeader(file, kind, size) {
+  if (kind === 'deb') {
+    const header = Buffer.alloc(8)
+    const handle = await open(file, 'r')
+    try {
+      const { bytesRead } = await handle.read(header, 0, header.length, 0)
+      if (bytesRead !== header.length || !header.equals(Buffer.from('!<arch>\n'))) {
+        throw new Error(`${basename(file)} is not a Debian package (ar archive)`)
+      }
+    } finally {
+      await handle.close()
+    }
+    return
+  }
+  if (kind === 'rpm') {
+    const header = Buffer.alloc(4)
+    const handle = await open(file, 'r')
+    try {
+      const { bytesRead } = await handle.read(header, 0, header.length, 0)
+      if (bytesRead !== header.length || !header.equals(Buffer.from([0xed, 0xab, 0xee, 0xdb]))) {
+        throw new Error(`${basename(file)} is not an RPM package`)
+      }
+    } finally {
+      await handle.close()
+    }
+    return
+  }
+  if (kind === 'targz') {
+    const header = Buffer.alloc(2)
+    const handle = await open(file, 'r')
+    try {
+      const { bytesRead } = await handle.read(header, 0, header.length, 0)
+      if (bytesRead !== header.length || !header.equals(Buffer.from([0x1f, 0x8b]))) {
+        throw new Error(`${basename(file)} is not a gzip archive`)
+      }
+    } finally {
+      await handle.close()
+    }
+    return
+  }
   if (kind !== 'exe' && kind !== 'zip' && kind !== 'dmg') return
   const handle = await open(file, 'r')
   try {
@@ -112,6 +164,8 @@ export async function verifyReleaseAssets(releaseDir, version, options = {}) {
   await assertUpdateEntry(root, 'latest.yml', version, 'dsh-desktop-windows-x64-setup.exe')
   await assertUpdateEntry(root, 'latest-mac.yml', version, 'dsh-desktop-mac-arm64.zip')
   await assertUpdateEntry(root, 'latest-mac.yml', version, 'dsh-desktop-mac-x64.zip')
+  await assertUpdateEntry(root, 'latest-linux.yml', version, 'dsh-desktop-linux-x64.tar.gz')
+  await assertUpdateEntry(root, 'latest-linux.yml', version, 'dsh-desktop-linux-arm64.tar.gz')
 }
 
 async function main() {
