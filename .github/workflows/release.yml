@@ -513,12 +513,17 @@ jobs:
       - name: Smoke test packaged Linux Harness
         if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         env:
-          SMOKE_DIR: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.prerelease_tag != '') && 'dist/linux-unpacked' || 'dist-dev/linux-unpacked' }}
+          SMOKE_BASE: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.prerelease_tag != '') && 'dist' || 'dist-dev' }}
         run: |
           set -euo pipefail
           # Validate the packaged per-arch runtime binaries without a display:
           # the bundled Node must run on the target arch and the koffi native
           # binding must resolve from inside the packaged app.
+          # electron-builder 26 drops the arch suffix from the x64 unpacked
+          # dir but keeps it for arm64 ("dist[-dev]/linux-unpacked" vs
+          # "dist[-dev]/linux-arm64-unpacked"), so discover either layout.
+          SMOKE_DIR="$(ls -d "$SMOKE_BASE"/linux-unpacked "$SMOKE_BASE"/linux-*-unpacked 2>/dev/null | head -1)"
+          test -n "$SMOKE_DIR" || { echo "No unpacked Linux app under $SMOKE_BASE/"; exit 1; }
           test -x "$SMOKE_DIR/resources/app/node_modules/node/bin/node"
           "$SMOKE_DIR/resources/app/node_modules/node/bin/node" --input-type=module -e "import { createRequire } from 'node:module'; import { pathToFileURL } from 'node:url'; const require = createRequire(pathToFileURL(process.argv[1])); const resolved = require.resolve('koffi'); if (!resolved.startsWith(process.argv[2])) throw new Error('koffi resolved outside packaged app: ' + resolved); const koffi = require('koffi'); const getCurrentProcessId = koffi.load('libc.so.6').func('getpid', 'int32', []); if (getCurrentProcessId() !== process.pid) throw new Error('Native koffi smoke failed'); console.log('Packaged koffi native binding passed');" "$SMOKE_DIR/resources/app/package.json" "$SMOKE_DIR/resources/app/node_modules"
       - uses: actions/upload-artifact@v4
@@ -576,9 +581,14 @@ jobs:
       - name: Smoke test packaged Linux Harness
         if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         env:
-          SMOKE_DIR: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.prerelease_tag != '') && 'dist/linux-unpacked' || 'dist-dev/linux-unpacked' }}
+          SMOKE_BASE: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.prerelease_tag != '') && 'dist' || 'dist-dev' }}
         run: |
           set -euo pipefail
+          # electron-builder 26 keeps the arch suffix for non-x64 outputs, so
+          # the unpacked directory may be either "linux-unpacked" or
+          # "linux-arm64-unpacked".
+          SMOKE_DIR="$(ls -d "$SMOKE_BASE"/linux-unpacked "$SMOKE_BASE"/linux-*-unpacked 2>/dev/null | head -1)"
+          test -n "$SMOKE_DIR" || { echo "No unpacked Linux app under $SMOKE_BASE/"; exit 1; }
           test -x "$SMOKE_DIR/resources/app/node_modules/node/bin/node"
           arch="$("$SMOKE_DIR/resources/app/node_modules/node/bin/node" -p process.arch)"
           if [ "$arch" != "arm64" ]; then echo "Packaged node reports $arch, expected arm64." >&2; exit 1; fi
