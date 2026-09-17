@@ -522,7 +522,12 @@ jobs:
           # electron-builder 26 drops the arch suffix from the x64 unpacked
           # dir but keeps it for arm64 ("dist[-dev]/linux-unpacked" vs
           # "dist[-dev]/linux-arm64-unpacked"), so discover either layout.
-          SMOKE_DIR="$(ls -d "$SMOKE_BASE"/linux-unpacked "$SMOKE_BASE"/linux-*-unpacked 2>/dev/null | head -1)"
+          SMOKE_DIR=""
+          shopt -s nullglob
+          for d in "$SMOKE_BASE"/linux-unpacked "$SMOKE_BASE"/linux-*-unpacked; do
+            SMOKE_DIR="$d"; break
+          done
+          shopt -u nullglob
           test -n "$SMOKE_DIR" || { echo "No unpacked Linux app under $SMOKE_BASE/"; exit 1; }
           test -x "$SMOKE_DIR/resources/app/node_modules/node/bin/node"
           "$SMOKE_DIR/resources/app/node_modules/node/bin/node" --input-type=module -e "import { createRequire } from 'node:module'; import { pathToFileURL } from 'node:url'; const require = createRequire(pathToFileURL(process.argv[1])); const resolved = require.resolve('koffi'); if (!resolved.startsWith(process.argv[2])) throw new Error('koffi resolved outside packaged app: ' + resolved); const koffi = require('koffi'); const getCurrentProcessId = koffi.load('libc.so.6').func('getpid', 'int32', []); if (getCurrentProcessId() !== process.pid) throw new Error('Native koffi smoke failed'); console.log('Packaged koffi native binding passed');" "$SMOKE_DIR/resources/app/package.json" "$SMOKE_DIR/resources/app/node_modules"
@@ -587,7 +592,12 @@ jobs:
           # electron-builder 26 keeps the arch suffix for non-x64 outputs, so
           # the unpacked directory may be either "linux-unpacked" or
           # "linux-arm64-unpacked".
-          SMOKE_DIR="$(ls -d "$SMOKE_BASE"/linux-unpacked "$SMOKE_BASE"/linux-*-unpacked 2>/dev/null | head -1)"
+          SMOKE_DIR=""
+          shopt -s nullglob
+          for d in "$SMOKE_BASE"/linux-unpacked "$SMOKE_BASE"/linux-*-unpacked; do
+            SMOKE_DIR="$d"; break
+          done
+          shopt -u nullglob
           test -n "$SMOKE_DIR" || { echo "No unpacked Linux app under $SMOKE_BASE/"; exit 1; }
           test -x "$SMOKE_DIR/resources/app/node_modules/node/bin/node"
           arch="$("$SMOKE_DIR/resources/app/node_modules/node/bin/node" -p process.arch)"
