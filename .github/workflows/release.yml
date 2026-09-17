@@ -529,8 +529,28 @@ jobs:
           done
           shopt -u nullglob
           test -n "$SMOKE_DIR" || { echo "No unpacked Linux app under $SMOKE_BASE/"; exit 1; }
-          test -x "$SMOKE_DIR/resources/app/node_modules/node/bin/node"
-          "$SMOKE_DIR/resources/app/node_modules/node/bin/node" --input-type=module -e "import { createRequire } from 'node:module'; import { pathToFileURL } from 'node:url'; const require = createRequire(pathToFileURL(process.argv[1])); const resolved = require.resolve('koffi'); if (!resolved.startsWith(process.argv[2])) throw new Error('koffi resolved outside packaged app: ' + resolved); const koffi = require('koffi'); const getCurrentProcessId = koffi.load('libc.so.6').func('getpid', 'int32', []); if (getCurrentProcessId() !== process.pid) throw new Error('Native koffi smoke failed'); console.log('Packaged koffi native binding passed');" "$SMOKE_DIR/resources/app/package.json" "$SMOKE_DIR/resources/app/node_modules"
+          PACKAGED_NODE="$SMOKE_DIR/resources/app/node_modules/node/bin/node"
+          PACKAGE_JSON="$SMOKE_DIR/resources/app/package.json"
+          NODE_MODULES_DIR="$SMOKE_DIR/resources/app/node_modules"
+          test -x "$PACKAGED_NODE"
+          # Pass the package.json and node_modules anchors through environment
+          # variables instead of process.argv: with `node -e`, argv[1] is the
+          # literal string "[eval]" so createRequire(pathToFileURL(argv[1]))
+          # anchors to cwd, not to the packaged app. Anchoring against
+          # process.env.PKG (the package.json file path) keeps createRequire
+          # inside the packaged app's node_modules tree regardless of cwd.
+          PKG="$PACKAGE_JSON" MODULES="$NODE_MODULES_DIR" "$PACKAGED_NODE" --input-type=module -e "
+            import { createRequire } from 'node:module';
+            const require = createRequire(process.env.PKG);
+            const resolved = require.resolve('koffi');
+            if (!resolved.startsWith(process.env.MODULES + '/')) {
+              throw new Error('koffi resolved outside packaged app: ' + resolved);
+            }
+            const koffi = require('koffi');
+            const getpid = koffi.load('libc.so.6').func('getpid', 'int32', []);
+            if (getpid() !== process.pid) throw new Error('Native koffi smoke failed');
+            console.log('Packaged koffi native binding passed');
+          "
       - uses: actions/upload-artifact@v4
         if: startsWith(github.ref, 'refs/tags/v') || inputs.prerelease_tag != ''
         with:
@@ -599,10 +619,26 @@ jobs:
           done
           shopt -u nullglob
           test -n "$SMOKE_DIR" || { echo "No unpacked Linux app under $SMOKE_BASE/"; exit 1; }
-          test -x "$SMOKE_DIR/resources/app/node_modules/node/bin/node"
-          arch="$("$SMOKE_DIR/resources/app/node_modules/node/bin/node" -p process.arch)"
+          PACKAGED_NODE="$SMOKE_DIR/resources/app/node_modules/node/bin/node"
+          PACKAGE_JSON="$SMOKE_DIR/resources/app/package.json"
+          NODE_MODULES_DIR="$SMOKE_DIR/resources/app/node_modules"
+          test -x "$PACKAGED_NODE"
+          arch="$("$PACKAGED_NODE" -p process.arch)"
           if [ "$arch" != "arm64" ]; then echo "Packaged node reports $arch, expected arm64." >&2; exit 1; fi
-          "$SMOKE_DIR/resources/app/node_modules/node/bin/node" --input-type=module -e "import { createRequire } from 'node:module'; import { pathToFileURL } from 'node:url'; const require = createRequire(pathToFileURL(process.argv[1])); const resolved = require.resolve('koffi'); if (!resolved.startsWith(process.argv[2])) throw new Error('koffi resolved outside packaged app: ' + resolved); const koffi = require('koffi'); const getCurrentProcessId = koffi.load('libc.so.6').func('getpid', 'int32', []); if (getCurrentProcessId() !== process.pid) throw new Error('Native koffi smoke failed'); console.log('Packaged koffi native binding passed');" "$SMOKE_DIR/resources/app/package.json" "$SMOKE_DIR/resources/app/node_modules"
+          # See x64 smoke for why we anchor with env vars (argv[1] is '[eval]'
+          # under node -e).
+          PKG="$PACKAGE_JSON" MODULES="$NODE_MODULES_DIR" "$PACKAGED_NODE" --input-type=module -e "
+            import { createRequire } from 'node:module';
+            const require = createRequire(process.env.PKG);
+            const resolved = require.resolve('koffi');
+            if (!resolved.startsWith(process.env.MODULES + '/')) {
+              throw new Error('koffi resolved outside packaged app: ' + resolved);
+            }
+            const koffi = require('koffi');
+            const getpid = koffi.load('libc.so.6').func('getpid', 'int32', []);
+            if (getpid() !== process.pid) throw new Error('Native koffi smoke failed');
+            console.log('Packaged koffi native binding passed');
+          "
       - uses: actions/upload-artifact@v4
         if: startsWith(github.ref, 'refs/tags/v') || inputs.prerelease_tag != ''
         with:
