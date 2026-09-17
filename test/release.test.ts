@@ -427,11 +427,17 @@ describe('GitHub release contract', () => {
     expect(workflow).toContain('name: windows-x64-dev')
     expect(workflow).toContain('dist-dev/dsh-desktop-dev-windows-x64-setup.exe')
     for (const asset of releaseAssets) expect(workflow).toContain(asset)
+    expect(workflow).toContain('runs-on: ubuntu-24.04')
+    expect(workflow).toContain('runs-on: ubuntu-24.04-arm')
+    expect(workflow).toContain('npm run package:linux:x64')
+    expect(workflow).toContain('npm run package:linux:arm64')
+    expect(workflow).toContain('merge-linux-update-metadata.mjs')
+    expect(workflow).toContain('latest-linux.yml')
     expect(
       workflow.match(
         /npm version --no-git-tag-version --allow-same-version "\$\{\{ github\.ref_name \}\}"/g
       )
-    ).toHaveLength(4)
+    ).toHaveLength(6)
   })
 
   it('signs and notarizes both macOS architectures on tag releases', async () => {

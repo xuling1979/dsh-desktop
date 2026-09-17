@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { compareVersions } from '../update/version-catalog'
 
 export const SERVICE_URL = 'https://dshdesktop.com/crash'
-export type DesktopPlatform = 'mac' | 'mac-intel' | 'windows'
+export type DesktopPlatform = 'mac' | 'mac-intel' | 'windows' | 'linux-x64' | 'linux-arm64'
 export type FailureKind = 'startup-failure' | 'harness-crash' | 'renderer-crash' | 'gpu-crash' | 'main-crash' | 'unclean-exit'
 export type UpdateDecision = { updateAvailable: false } | { updateAvailable: true; version: string; feedUrl: string }
 type Request = (url: string, init?: RequestInit) => Promise<Response>
@@ -21,6 +21,8 @@ export function desktopPlatform(platform: string, arch: string): DesktopPlatform
   if (platform === 'darwin' && arch === 'arm64') return 'mac'
   if (platform === 'darwin' && arch === 'x64') return 'mac-intel'
   if (platform === 'win32' && arch === 'x64') return 'windows'
+  if (platform === 'linux' && arch === 'x64') return 'linux-x64'
+  if (platform === 'linux' && arch === 'arm64') return 'linux-arm64'
   throw new Error(`Unsupported desktop platform: ${platform}/${arch}`)
 }
 export function redact(value: string): string {

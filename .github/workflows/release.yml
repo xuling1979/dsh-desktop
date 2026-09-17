@@ -18,6 +18,7 @@ on:
           - all
           - windows
           - macos
+          - linux
       prerelease_tag:
         description: Non-v semver tag for a production-parity pre-release (e.g. 2.1.0-rc.1)
         required: false
@@ -477,6 +478,194 @@ jobs:
             dist-dev/latest.yml
           if-no-files-found: error
 
+  linux-x64:
+    name: Linux x64
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && (inputs.target == 'all' || inputs.target == 'linux'))
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Set app version from release tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npm version --no-git-tag-version --allow-same-version "${{ github.ref_name }}"
+      - name: Set app version from pre-release tag
+        if: inputs.prerelease_tag != ''
+        run: npm version --no-git-tag-version --allow-same-version "${{ inputs.prerelease_tag }}"
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - name: Build Linux x64 release package
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.prerelease_tag != ''
+        run: |
+          npm run package:linux:x64
+          mv dist/latest-linux.yml dist/latest-linux-x64.yml
+      - name: Build isolated Linux development package
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') && inputs.prerelease_tag == '' }}
+        run: npm run package:dev:dir
+      - name: Smoke test packaged Linux Harness
+        if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+        env:
+          SMOKE_BASE: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.prerelease_tag != '') && 'dist' || 'dist-dev' }}
+        run: |
+          set -euxo pipefail
+          # Validate the packaged per-arch runtime binaries without a display:
+          # the bundled Node must run on the target arch and the koffi native
+          # binding must resolve from inside the packaged app.
+          # electron-builder 26 drops the arch suffix for x64 outputs.
+          SMOKE_DIR=""
+          shopt -s nullglob
+          for d in "$SMOKE_BASE"/linux-unpacked; do
+            SMOKE_DIR="$d"; break
+          done
+          shopt -u nullglob
+          test -n "$SMOKE_DIR" || { ls -la "$SMOKE_BASE"; echo "No linux-unpacked app under $SMOKE_BASE/"; exit 1; }
+          # Resolve to an absolute path so the createRequire anchor and the
+          # prefix comparison below survive `node -e` running with cwd !=
+          # packaged app.
+          SMOKE_DIR="$(realpath "$SMOKE_DIR")"
+          PACKAGED_NODE="$SMOKE_DIR/resources/app/node_modules/node/bin/node"
+          PACKAGE_JSON="$SMOKE_DIR/resources/app/package.json"
+          NODE_MODULES_DIR="$SMOKE_DIR/resources/app/node_modules"
+          test -x "$PACKAGED_NODE"
+          # Pass the package.json and node_modules anchors through environment
+          # variables instead of process.argv: with `node -e`, argv[1] is the
+          # literal string "[eval]" so createRequire(pathToFileURL(argv[1]))
+          # anchors to cwd, not to the packaged app. Anchoring against
+          # process.env.PKG (the package.json file path) keeps createRequire
+          # inside the packaged app's node_modules tree regardless of cwd.
+          PKG="$PACKAGE_JSON" MODULES="$NODE_MODULES_DIR" "$PACKAGED_NODE" --input-type=module -e "
+            import { createRequire } from 'node:module';
+            const require = createRequire(process.env.PKG);
+            const resolved = require.resolve('koffi');
+            if (!resolved.startsWith(process.env.MODULES + '/')) {
+              throw new Error('koffi resolved outside packaged app: ' + resolved);
+            }
+            const koffi = require('koffi');
+            const getpid = koffi.load('libc.so.6').func('getpid', 'int32', []);
+            if (getpid() !== process.pid) throw new Error('Native koffi smoke failed');
+            console.log('Packaged koffi native binding passed');
+          "
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.prerelease_tag != ''
+        with:
+          name: linux-x64
+          path: |
+            dist/dsh-desktop-linux-x64.deb
+            dist/dsh-desktop-linux-x64.rpm
+            dist/dsh-desktop-linux-x64.tar.gz
+            dist/latest-linux-x64.yml
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') && inputs.prerelease_tag == '' }}
+        with:
+          name: linux-x64-dev
+          path: |
+            dist-dev/dsh-desktop-dev-linux-x64.deb
+            dist-dev/dsh-desktop-dev-linux-x64.tar.gz
+          if-no-files-found: warn
+
+  linux-arm64:
+    name: Linux arm64
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && (inputs.target == 'all' || inputs.target == 'linux'))
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Set app version from release tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npm version --no-git-tag-version --allow-same-version "${{ github.ref_name }}"
+      - name: Set app version from pre-release tag
+        if: inputs.prerelease_tag != ''
+        run: npm version --no-git-tag-version --allow-same-version "${{ inputs.prerelease_tag }}"
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - name: Build Linux arm64 release package
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.prerelease_tag != ''
+        run: |
+          npm run package:linux:arm64
+          mv dist/latest-linux.yml dist/latest-linux-arm64.yml
+      - name: Build isolated Linux development package
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') && inputs.prerelease_tag == '' }}
+        run: npm run package:dev:dir
+      - name: Smoke test packaged Linux Harness
+        if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+        env:
+          SMOKE_BASE: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.prerelease_tag != '') && 'dist' || 'dist-dev' }}
+        run: |
+          set -euxo pipefail
+          # electron-builder 26 may also emit an unsuffixed
+          # "dist[-dev]/linux-unpacked" on arm64 runners that lacks the
+          # packaged payload, so the arm64 job must only accept the
+          # arch-suffixed directory.
+          SMOKE_DIR=""
+          shopt -s nullglob
+          for d in "$SMOKE_BASE"/linux-arm64-unpacked; do
+            SMOKE_DIR="$d"; break
+          done
+          shopt -u nullglob
+          test -n "$SMOKE_DIR" || { ls -la "$SMOKE_BASE"; echo "No linux-arm64-unpacked app under $SMOKE_BASE/"; exit 1; }
+          # Resolve to an absolute path so the createRequire anchor and the
+          # prefix comparison below survive `node -e` running with cwd !=
+          # packaged app.
+          SMOKE_DIR="$(realpath "$SMOKE_DIR")"
+          PACKAGED_NODE="$SMOKE_DIR/resources/app/node_modules/node/bin/node"
+          PACKAGE_JSON="$SMOKE_DIR/resources/app/package.json"
+          NODE_MODULES_DIR="$SMOKE_DIR/resources/app/node_modules"
+          test -x "$PACKAGED_NODE"
+          arch="$("$PACKAGED_NODE" -p process.arch)"
+          if [ "$arch" != "arm64" ]; then echo "Packaged node reports $arch, expected arm64." >&2; exit 1; fi
+          # See x64 smoke for why we anchor with env vars (argv[1] is '[eval]'
+          # under node -e).
+          PKG="$PACKAGE_JSON" MODULES="$NODE_MODULES_DIR" "$PACKAGED_NODE" --input-type=module -e "
+            import { createRequire } from 'node:module';
+            const require = createRequire(process.env.PKG);
+            const resolved = require.resolve('koffi');
+            if (!resolved.startsWith(process.env.MODULES + '/')) {
+              throw new Error('koffi resolved outside packaged app: ' + resolved);
+            }
+            const koffi = require('koffi');
+            const getpid = koffi.load('libc.so.6').func('getpid', 'int32', []);
+            if (getpid() !== process.pid) throw new Error('Native koffi smoke failed');
+            console.log('Packaged koffi native binding passed');
+          "
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.prerelease_tag != ''
+        with:
+          name: linux-arm64
+          path: |
+            dist/dsh-desktop-linux-arm64.deb
+            dist/dsh-desktop-linux-arm64.rpm
+            dist/dsh-desktop-linux-arm64.tar.gz
+            dist/latest-linux-arm64.yml
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') && inputs.prerelease_tag == '' }}
+        with:
+          name: linux-arm64-dev
+          path: |
+            dist-dev/dsh-desktop-dev-linux-arm64.deb
+            dist-dev/dsh-desktop-dev-linux-arm64.tar.gz
+          if-no-files-found: warn
+
   sign-windows:
     name: Sign Windows package locally with UKey
     needs: windows-x64
@@ -635,11 +824,15 @@ jobs:
       inputs.prerelease_tag == '' &&
       needs.macos-apple-silicon.result == 'success' &&
       needs.macos-intel.result == 'success' &&
-      needs.sign-windows.result == 'success'
+      needs.sign-windows.result == 'success' &&
+      needs.linux-x64.result == 'success' &&
+      needs.linux-arm64.result == 'success'
     needs:
       - macos-apple-silicon
       - macos-intel
       - sign-windows
+      - linux-x64
+      - linux-arm64
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -659,6 +852,14 @@ jobs:
         with:
           name: windows-x64
           path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-x64
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-arm64
+          path: release-assets
       - name: Merge macOS update metadata
         run: |
           set -euo pipefail
@@ -669,6 +870,14 @@ jobs:
           find release-assets -maxdepth 1 \
             \( -name latest-mac-arm64.yml -o -name latest-mac-x64.yml \) \
             -delete
+      - name: Merge Linux update metadata
+        run: |
+          set -euo pipefail
+          node scripts/merge-linux-update-metadata.mjs \
+            release-assets/latest-linux-x64.yml \
+            release-assets/latest-linux-arm64.yml \
+            release-assets/latest-linux.yml
+          rm release-assets/latest-linux-x64.yml release-assets/latest-linux-arm64.yml
       - name: Verify release assets before publication
         run: |
           set -euo pipefail
@@ -871,11 +1080,15 @@ jobs:
       inputs.prerelease_tag != '' &&
       needs.macos-apple-silicon.result == 'success' &&
       needs.macos-intel.result == 'success' &&
-      needs.sign-windows.result == 'success'
+      needs.sign-windows.result == 'success' &&
+      needs.linux-x64.result == 'success' &&
+      needs.linux-arm64.result == 'success'
     needs:
       - macos-apple-silicon
       - macos-intel
       - sign-windows
+      - linux-x64
+      - linux-arm64
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -895,6 +1108,14 @@ jobs:
         with:
           name: windows-x64
           path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-x64
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-arm64
+          path: release-assets
       - name: Merge macOS update metadata
         run: |
           set -euo pipefail
@@ -905,6 +1126,14 @@ jobs:
           find release-assets -maxdepth 1 \
             \( -name latest-mac-arm64.yml -o -name latest-mac-x64.yml \) \
             -delete
+      - name: Merge Linux update metadata
+        run: |
+          set -euo pipefail
+          node scripts/merge-linux-update-metadata.mjs \
+            release-assets/latest-linux-x64.yml \
+            release-assets/latest-linux-arm64.yml \
+            release-assets/latest-linux.yml
+          rm release-assets/latest-linux-x64.yml release-assets/latest-linux-arm64.yml
       - name: Verify release assets before publication
         run: node scripts/verify-release-assets.mjs release-assets "${{ inputs.prerelease_tag }}"
       - name: Create or update pre-release

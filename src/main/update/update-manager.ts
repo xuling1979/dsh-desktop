@@ -102,7 +102,7 @@ export function startUpdateManager(options: { prepareToInstall: () => Promise<vo
   if (!supportsUpdates()) {
     transition({
       type: 'unsupported',
-      message: 'Updates are available in installed macOS and Windows builds.'
+      message: unsupportedUpdateMessage()
     })
     return
   }
@@ -121,7 +121,7 @@ export async function checkForUpdates(manual = false): Promise<UpdateStatus> {
     transition(
       {
         type: 'unsupported',
-        message: 'Update checks are only available in installed macOS and Windows builds.'
+        message: unsupportedUpdateMessage()
       },
       manual
     )
@@ -330,6 +330,17 @@ function checkAfterResume(): void {
 
 function supportsUpdates(): boolean {
   return supportsAutoUpdates(app.isPackaged, process.platform)
+}
+
+// Linux packages (.deb/.rpm) are installed and upgraded through the system
+// package manager, so electron-updater's silent flow stays disabled there —
+// but the message should point users at the package channels, not claim the
+// platform is unsupported.
+function unsupportedUpdateMessage(): string {
+  if (process.platform === 'linux') {
+    return 'Updates are delivered through your Linux package (.deb/.rpm). Download the latest package from the release page or your software store.'
+  }
+  return 'Updates are available in installed macOS and Windows builds.'
 }
 
 function errorMessage(error: unknown): string {
