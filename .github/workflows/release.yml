@@ -529,6 +529,10 @@ jobs:
           done
           shopt -u nullglob
           test -n "$SMOKE_DIR" || { echo "No unpacked Linux app under $SMOKE_BASE/"; exit 1; }
+          # Resolve to an absolute path so the createRequire anchor and the
+          # prefix comparison below survive `node -e` running with cwd !=
+          # packaged app.
+          SMOKE_DIR="$(realpath "$SMOKE_DIR")"
           PACKAGED_NODE="$SMOKE_DIR/resources/app/node_modules/node/bin/node"
           PACKAGE_JSON="$SMOKE_DIR/resources/app/package.json"
           NODE_MODULES_DIR="$SMOKE_DIR/resources/app/node_modules"
@@ -619,6 +623,10 @@ jobs:
           done
           shopt -u nullglob
           test -n "$SMOKE_DIR" || { echo "No unpacked Linux app under $SMOKE_BASE/"; exit 1; }
+          # Resolve to an absolute path so the createRequire anchor and the
+          # prefix comparison below survive `node -e` running with cwd !=
+          # packaged app.
+          SMOKE_DIR="$(realpath "$SMOKE_DIR")"
           PACKAGED_NODE="$SMOKE_DIR/resources/app/node_modules/node/bin/node"
           PACKAGE_JSON="$SMOKE_DIR/resources/app/package.json"
           NODE_MODULES_DIR="$SMOKE_DIR/resources/app/node_modules"
